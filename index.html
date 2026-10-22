@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Classroom Follow-up Record</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+<!-- مكتبات فايربيس -->
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database-compat.js"></script>
+
+<style>
+:root{--b:#23479f;--ink:#14213d;--g:#c8962e;--bg:#f3f5fb;--ln:#dde3f0;--ok:#1f9d63;--no:#d64545}
+*{box-sizing:border-box}
+body{font-family:'Cairo',sans-serif;background:var(--bg);color:var(--ink);margin:0;padding:0;min-height:100vh}
+button,input,select,textarea{font-family:inherit;font-size:14px}
+.btn{background:var(--b);color:#fff;border:0;border-radius:8px;padding:8px 14px;cursor:pointer;font-weight:600;transition:.15s}.btn:hover{filter:brightness(1.15)}
+.btn.s{background:#fff;color:var(--b);border:1px solid var(--b)}.btn.d{background:var(--no)}.btn.g{background:var(--g)}.btn.sm{padding:4px 9px;font-size:12px}
+.inp{border:1px solid var(--ln);border-radius:8px;padding:7px 10px;background:#fff;max-width:100%}.inp:focus,.btn:focus-visible{outline:2px solid var(--g)}
+.card{background:#fff;border:1px solid var(--ln);border-radius:12px;padding:16px}
+.side{background:var(--ink);color:#fff;width:210px;flex:none;min-height:calc(100vh - 56px)}
+.side a{display:flex;gap:10px;align-items:center;padding:12px 18px;cursor:pointer;color:#cfd8ee}.side a.on{background:var(--b);color:#fff;border-inline-start:4px solid var(--g)}.side a:hover{background:#22345f}
+#toast{position:fixed;bottom:18px;inset-inline-start:18px;background:var(--ink);color:#fff;padding:10px 18px;border-radius:10px;z-index:99;display:none}
+html.dk{filter:invert(1) hue-rotate(180deg);background:#fff}
+.mb-2{margin-bottom:0.5rem}.w-full{width:100%}
+</style>
+</head>
+<body>
+
+<div id="app"></div>
+<div id="toast"></div>
+
+<script>
+// إعدادات فايربيس الخاصة بمشروعك
+const firebaseConfig = {
+  apiKey: "AIzaSyDRF1hZ8Hb_yY207DGlfRsJisT36QeLAoU",
+  authDomain: "quran-web-d4b82.firebaseapp.com",
+  databaseURL: "https://quran-web-d4b82-default-rtdb.firebaseio.com",
+  projectId: "quran-web-d4b82",
+  storageBucket: "quran-web-d4b82.firebasestorage.app",
+  messagingSenderId: "936358530285",
+  appId: "1:936358530285:web:fedc322295d9ab4b9110e4"
+};
+
+// تهيئة فايربيس بأمان
+try {
+  if (typeof firebase !== 'undefined' && !firebase.apps.length) {
+    firebase.initializeApp(firebaseConfig);
+  }
+} catch(e) {
+  console.error("Firebase init error:", e);
+}
+
+const $=id=>document.getElementById(id);
+let S = {lang:'ar', entry:'creator', page:'dash'};
+
+const TR = {
+  ar: {
+    creator: 'المنشئ', admin: 'المدير', member: 'العضو',
+    email: 'البريد الإلكتروني', password: 'كلمة المرور', remember: 'تذكرني',
+    login: 'تسجيل الدخول', logout: 'تسجيل الخروج', dash: 'الرئيسية',
+    track: 'سجل المتابعة', students: 'الطلاب', reports: 'التقارير', settings: 'الإعدادات',
+    badlogin: 'بيانات الدخول غير صحيحة أو غير موجودة في السحابة'
+  },
+  en: {
+    creator: 'Originator', admin: 'The Boss', member: 'Member',
+    email: 'Email', password: 'Password', remember: 'Remember me',
+    login: 'Log in', logout: 'Log out', dash: 'Dashboard',
+    track: 'Classroom Tracking', students: 'Students', reports: 'Reports', settings: 'Settings',
+    badlogin: 'Invalid credentials or user not found in Firebase'
+  }
+};
+
+const t = k => (TR[S.lang] && TR[S.lang][k]) ? TR[S.lang][k] : k;
+const ar = () => S.lang === 'ar';
+
+function toast(msg){
+  const e = $('toast');
+  if(!e) return;
+  e.textContent = msg;
+  e.style.display = 'block';
+  setTimeout(() => e.style.display = 'none', 2200);
+}
+
+function toggleDark(){
+  document.documentElement.classList.toggle('dk');
+}
+
+function setLanguage(l){
+  S.lang = l;
+  render();
+}
+
+function login(){
+  const em = $('em') ? $('em').value.trim() : '';
+  const pw = $('pw') ? $('pw').value : '';
+  const lerr = $('lerr');
+
+  if (!em || !pw) {
+    if(lerr) lerr.textContent = ar() ? "يرجى كتابة البريد وكلمة المرور" : "Please enter email and password";
+    return;
+  }
+
+  if(lerr){
+    lerr.style.color = "var(--b)";
+    lerr.textContent = ar() ? "جاري التحقق..." : "Authenticating...";
+  }
+
+  if(typeof firebase !== 'undefined' && firebase.auth){
+    firebase.auth().signInWithEmailAndPassword(em, pw)
+      .then(() => {
+        if(lerr) lerr.textContent = "";
+        toast(ar() ? "تم تسجيل الدخول بنجاح ✓" : "Logged in successfully ✓");
+        render();
+      })
+      .catch((error) => {
+        if(lerr){
+          lerr.style.color = "var(--no)";
+          lerr.textContent = t('badlogin');
+        }
+      });
+  } else {
+    alert("لم يتم تحميل مكتبة فايربيس بنجاح، تأكد من الاتصال بالإنترنت.");
+  }
+}
+
+function logout(){
+  if(typeof firebase !== 'undefined' && firebase.auth){
+    firebase.auth().signOut().then(() => {
+      toast(ar() ? "تم تسجيل الخروج ✓" : "Logged out ✓");
+      render();
+    });
+  }
+}
+
+function render(){
+  document.documentElement.lang = S.lang;
+  document.documentElement.dir = ar() ? 'rtl' : 'ltr';
+  const A = $('app');
+  if(!A) return;
+
+  let user = null;
+  if(typeof firebase !== 'undefined' && firebase.auth){
+    user = firebase.auth().currentUser;
+  }
+
+  // إذا لم يكن المستخدم مسجلاً
+  if (!user) {
+    A.innerHTML = `
+      <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#14213d,#23479f);padding:14px">
+        <div class="card" style="width:400px;max-width:100%">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <i class="fa-solid fa-school" style="font-size:35px;color:var(--g)"></i>
+            <div>
+              <select class="inp" onchange="setLanguage(this.value)">
+                <option value="ar" ${ar()?'selected':''}>🌐 العربية</option>
+                <option value="en" ${!ar()?'selected':''}>🌐 English</option>
+              </select>
+              <button class="btn s sm" onclick="toggleDark()">🌓</button>
+            </div>
+          </div>
+          <h1 style="font-size:18px;font-weight:700;margin:12px 0 2px">Al-Hikma Private School, Al-Nuaimiya Boys</h1>
+          <div style="color:#667;margin-bottom:12px;font-size:13px">Classroom Follow-up Record</div>
+          
+          <div style="display:flex;gap:6px;margin-bottom:12px">
+            <button class="btn ${S.entry==='creator'?'':'s'}" style="flex:1;padding:8px 2px;font-size:12px" onclick="S.entry='creator';render()"><i class="fa-solid fa-crown"></i> ${t('creator')}</button>
+            <button class="btn ${S.entry==='admin'?'':'s'}" style="flex:1;padding:8px 2px;font-size:12px" onclick="S.entry='admin';render()"><i class="fa-solid fa-user-shield"></i> ${t('admin')}</button>
+            <button class="btn ${S.entry==='member'?'':'s'}" style="flex:1;padding:8px 2px;font-size:12px" onclick="S.entry='member';render()"><i class="fa-solid fa-user"></i> ${t('member')}</button>
+          </div>
+
+          <label style="font-weight:600">${t('email')}</label>
+          <input id="em" class="inp w-full mb-2" type="email" placeholder="example@gmail.com">
+          
+          <label style="font-weight:600">${t('password')}</label>
+          <input id="pw" class="inp w-full mb-2" type="password" placeholder="••••••••" onkeydown="if(event.key==='Enter')login()">
+          
+          <label style="display:flex;gap:6px;margin-bottom:10px;font-size:13px">
+            <input id="rm" type="checkbox" checked> ${t('remember')}
+          </label>
+          
+          <div id="lerr" style="color:var(--no);min-height:20px;font-size:13px;margin-bottom:6px"></div>
+          <button class="btn w-full" onclick="login()">${t('login')}</button>
+        </div>
+      </div>`;
+    return;
+  }
+
+  // الواجهة الرئيسية عند دخول المستخدم
+  A.innerHTML = `
+    <div style="display:flex;min-height:100vh">
+      <div class="side">
+        <div style="padding:16px;font-weight:bold;border-bottom:1px solid rgba(255,255,255,0.1);display:flex;align-items:center;gap:10px">
+          <i class="fa-solid fa-school" style="color:var(--g)"></i> Al-Hikma School
+        </div>
+        <a class="${S.page==='dash'?'on':''}" onclick="S.page='dash';render()"><i class="fa-solid fa-chart-line"></i> ${t('dash')}</a>
+        <a class="${S.page==='track'?'on':''}" onclick="S.page='track';render()"><i class="fa-solid fa-list-check"></i> ${t('track')}</a>
+        <a class="${S.page==='students'?'on':''}" onclick="S.page='students';render()"><i class="fa-solid fa-user-graduate"></i> ${t('students')}</a>
+        <a class="${S.page==='reports'?'on':''}" onclick="S.page='reports';render()"><i class="fa-solid fa-file-invoice"></i> ${t('reports')}</a>
+        <a class="${S.page==='settings'?'on':''}" onclick="S.page='settings';render()"><i class="fa-solid fa-gear"></i> ${t('settings')}</a>
+        <a onclick="logout()"><i class="fa-solid fa-right-from-bracket"></i> ${t('logout')}</a>
+      </div>
+      <main style="flex:1;padding:20px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;background:#fff;padding:12px 20px;border-radius:10px;border:1px solid var(--ln)">
+          <div>
+            <h2 style="margin:0">${t(S.page)}</h2>
+            <small style="color:#666">${user.email} (${t(S.entry)})</small>
+          </div>
+          <div>
+            <select class="inp" onchange="setLanguage(this.value)">
+              <option value="ar" ${ar()?'selected':''}>🌐 العربية</option>
+              <option value="en" ${!ar()?'selected':''}>🌐 English</option>
+            </select>
+            <button class="btn s sm" onclick="toggleDark()">🌓</button>
+          </div>
+        </div>
+        
+        <div class="card">
+          <h3>أهلاً بك يا محمد!</h3>
+          <p>تم تسجيل الدخول بنجاح عبر حساب فايربيس:</p>
+          <code style="background:#eef2ff;padding:8px 14px;border-radius:8px;color:var(--b);font-weight:bold">${user.email}</code>
+        </div>
+      </main>
+    </div>`;
+}
+
+// مراقبة حالة فايربيس وإعادة العرض عند تحميل الصفحة
+window.addEventListener('DOMContentLoaded', () => {
+  if(typeof firebase !== 'undefined' && firebase.auth){
+    firebase.auth().onAuthStateChanged(() => {
+      render();
+    });
+  }
+  render();
+});
+</script>
+</body>
+</html>
